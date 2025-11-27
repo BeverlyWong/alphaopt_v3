@@ -1,0 +1,4 @@
+﻿Risk Level,Description,Expected Annual Return,Expected Annual Volatility,Sharpe Ratio,Expected Maximum Drawdown
+Conservative,"Focus on principal safety, low volatility, strict drawdown control",0.028571,0.072154,0.39598,-0.11777
+Balanced,"Balanced risk and return, moderate volatility, superior Sharpe ratio",0.064286,0.087712,0.732922,-0.115337
+Aggressive,"Pursue high returns, tolerate higher volatility, highest expected return",0.1,0.119707,0.835373,-0.136478
