@@ -149,24 +149,6 @@ def render_overview(data):
     df_display['Sharpe Ratio'] = df_display['Sharpe Ratio'].round(3)
     
     st.dataframe(df_display, use_container_width=True, hide_index=True, height=400)
-    
-    st.markdown("### Asset Class Distribution")
-    category_counts = data['etf_summary']['Category'].value_counts()
-    
-    fig = px.pie(
-        values=category_counts.values,
-        names=category_counts.index,
-        hole=0.4,
-        color_discrete_sequence=px.colors.qualitative.Set2
-    )
-    fig.update_layout(
-        height=450,
-        showlegend=True,
-        legend=dict(orientation="h", yanchor="bottom", y=-0.4, font=dict(size=11)),
-        margin=dict(t=20, b=80)
-    )
-    fig.update_traces(textposition='inside', textinfo='percent+label', textfont_size=11)
-    st.plotly_chart(fig, use_container_width=True)
 
 
 def render_analysis(data):
@@ -647,12 +629,140 @@ def render_portfolio(data):
         """)
 
 
+def render_planning(data):
+    st.markdown("## Investment Planning")
+    st.markdown("Turn portfolio theory into actionable investment plans.")
+    
+    st.markdown("---")
+    
+    weights = data['weights']
+    etf_summary = data['etf_summary']
+    
+    col1, col2 = st.columns([1, 2])
+    
+    with col1:
+        st.markdown("### Your Investment")
+        capital = st.number_input(
+            "Total Investment Amount (USD)",
+            min_value=1000.0,
+            max_value=10000000.0,
+            value=10000.0,
+            step=1000.0
+        )
+    
+    with col2:
+        st.markdown("### Select Risk Level")
+        risk_choice = st.radio(
+            "Choose your risk strategy:",
+            ["Conservative", "Balanced", "Aggressive", "Compare All"],
+            horizontal=True
+        )
+    
+    st.markdown("---")
+    
+    def build_allocation(portfolio_name, capital, weights, etf_summary):
+        port_weights = weights[portfolio_name]['weights']
+        
+        rows = []
+        for etf, weight in port_weights.items():
+            if weight > 0.001:
+                price_row = etf_summary[etf_summary['ETF_Symbol'] == etf]
+                if not price_row.empty:
+                    price = price_row['Latest_Price'].values[0]
+                    name = price_row['Fund_Name'].values[0]
+                    amount = capital * weight
+                    shares = int(amount / price)
+                    used = shares * price
+                    rows.append({
+                        'ETF': etf,
+                        'Name': name,
+                        'Weight': weight,
+                        'Price': price,
+                        'Shares': shares,
+                        'Amount': used
+                    })
+        
+        df = pd.DataFrame(rows)
+        df = df.sort_values('Weight', ascending=False)
+        return df
+    
+    def show_portfolio_plan(portfolio_name, capital, weights, etf_summary, color):
+        port = weights[portfolio_name]
+        
+        expected_value = capital * (1 + port['expected_return'])
+        
+        st.markdown(f"""
+        **Portfolio Summary**
+        - Expected Annual Return: **{port['expected_return']*100:.2f}%**
+        - Expected Volatility: **{port['volatility']*100:.2f}%**
+        - Sharpe Ratio: **{port['sharpe_ratio']:.3f}**
+        - Estimated Value After 1 Year: **${expected_value:,.0f}**
+        """)
+        
+        alloc_df = build_allocation(portfolio_name, capital, weights, etf_summary)
+        
+        total_used = alloc_df['Amount'].sum()
+        unused = capital - total_used
+        
+        st.markdown("### Your Buy List")
+        
+        display_df = alloc_df.copy()
+        display_df['Weight'] = (display_df['Weight'] * 100).round(1).astype(str) + '%'
+        display_df['Price'] = '$' + display_df['Price'].round(2).astype(str)
+        display_df['Amount'] = '$' + display_df['Amount'].round(2).astype(str)
+        display_df.columns = ['ETF', 'Fund Name', 'Weight', 'Price', 'Shares', 'Amount']
+        
+        st.dataframe(display_df, use_container_width=True, hide_index=True)
+        
+        col1, col2 = st.columns(2)
+        with col1:
+            st.metric("Total Invested", f"${total_used:,.2f}")
+        with col2:
+            st.metric("Remaining Cash", f"${unused:,.2f}")
+        
+        fig = go.Figure(go.Bar(
+            x=alloc_df['Amount'],
+            y=alloc_df['ETF'],
+            orientation='h',
+            marker_color=color,
+            text=['$' + f'{x:,.0f}' for x in alloc_df['Amount']],
+            textposition='outside'
+        ))
+        fig.update_layout(
+            title='Investment Allocation',
+            height=max(300, len(alloc_df) * 35),
+            xaxis_title='Amount (USD)',
+            yaxis_title='',
+            margin=dict(l=50, r=100, t=40, b=40)
+        )
+        st.plotly_chart(fig, use_container_width=True)
+    
+    if risk_choice == "Compare All":
+        tab1, tab2, tab3 = st.tabs(["🟢 Conservative", "🟡 Balanced", "🔴 Aggressive"])
+        
+        with tab1:
+            show_portfolio_plan("Conservative", capital, weights, etf_summary, '#22c55e')
+        
+        with tab2:
+            show_portfolio_plan("Balanced", capital, weights, etf_summary, '#eab308')
+        
+        with tab3:
+            show_portfolio_plan("Aggressive", capital, weights, etf_summary, '#ef4444')
+    else:
+        colors = {'Conservative': '#22c55e', 'Balanced': '#eab308', 'Aggressive': '#ef4444'}
+        st.markdown(f"### {risk_choice} Portfolio Plan")
+        show_portfolio_plan(risk_choice, capital, weights, etf_summary, colors[risk_choice])
+    
+    st.markdown("---")
+    st.warning("⚠️ **Disclaimer**: Prices shown are historical reference prices. Actual purchase prices may vary. This is for educational purposes only and does not constitute investment advice.")
+
+
 def main():
     st.sidebar.markdown("## Navigation")
     
     page = st.sidebar.radio(
         "Select Page",
-        ["Overview", "Analysis", "Correlation", "Portfolio"],
+        ["Overview", "Analysis", "Correlation", "Portfolio", "Planning"],
         label_visibility="collapsed"
     )
     
@@ -684,6 +794,8 @@ def main():
         render_correlation(data)
     elif page == "Portfolio":
         render_portfolio(data)
+    elif page == "Planning":
+        render_planning(data)
 
 
 if __name__ == "__main__":
